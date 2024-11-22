@@ -1,5 +1,5 @@
 from langchain.prompts import ChatPromptTemplate
-from langchain.document_loaders import UnstructuredFileLoader
+from langchain_community.document_loaders import JSONLoader
 from langchain.text_splitter import CharacterTextSplitter
 from langchain.embeddings import OpenAIEmbeddings, CacheBackedEmbeddings
 from langchain.vectorstores import FAISS
@@ -44,7 +44,7 @@ class ChatCallbackHandler(BaseCallbackHandler):
 llm = ChatOpenAI(temperature=0.1, streaming=True, callbacks=[ChatCallbackHandler()])
 
 # 같은 file에 대해 embed_file()을 실행했었다면 cache에서 결과를 바로 반환하는 decorator
-@st.cache_data(show_spinner="Embedding file...")
+@st.cache_resource(show_spinner="Embedding file...")
 def embed_file(file):
     file_content = file.read()
     file_path = f"./.cache/files/{file.name}"
@@ -55,13 +55,20 @@ def embed_file(file):
 
     splitter = CharacterTextSplitter.from_tiktoken_encoder(
         separator="\n",
-        chunk_size=600,
+        chunk_size=1000,
         chunk_overlap=100,
     )
 
-    loader = UnstructuredFileLoader(file_path)
+    loader = JSONLoader(
+        file_path=file_path,
+        jq_schema=".[:10] | .[].content",
+        text_content=True,
+    )
 
-    docs = loader.load_and_split(text_splitter=splitter)
+    data = loader.load()
+    
+    #docs = '\n\n'.join(document.page_content for document in data)
+    docs = splitter.split_documents(data)
 
     embeddings = OpenAIEmbeddings()
 
@@ -113,9 +120,9 @@ prompt = ChatPromptTemplate.from_messages([
     ("human", "{question}"),
 ])
 
-# 사이드바에서 파일 업로드
+# 사이드바에서 json 파일 업로드
 with st.sidebar:
-    file = st.file_uploader("Upload a .txt .pdf or .docx file", type=["pdf", "txt", "docx"])
+    file = st.file_uploader("Upload a .json", type=["json"])
 
 if file:
     retriever = embed_file(file)
