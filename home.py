@@ -13,7 +13,7 @@ st.markdown(
     
     Here are the apps I made:
     
-    - [ ] [AI News](/AI_News)
+    - [x] [AI News](/AI_News)
     - [ ] [Youtube AI](/Youtube_AI)
     - [ ] [Whisper](/Whisper)
     """
