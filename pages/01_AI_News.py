@@ -32,14 +32,14 @@ class ChatCallbackHandler(BaseCallbackHandler):
         self.message = ""  # 빈 message 문자열 생성
     
     def on_llm_start(self, *args, **kwargs):
-        self.message_box = st.empty()
+        self.message_box = st.empty()  # 빈 message box 생성
     
     def on_llm_end(self, *args, **kwargs):
-        save_message(self.message, "ai")
+        save_message(self.message, "ai")  # 응답이 끝나면 세션에 AI 응답으로 저장
     
     def on_llm_new_token(self, token, *args, **kwargs):
-        self.message += token
-        self.message_box.markdown(self.message)
+        self.message += token  # streaming 응답을 위해 토큰을 계속 덧붙임
+        self.message_box.markdown(self.message) 
 
 llm = ChatOpenAI(temperature=0.1, streaming=True, callbacks=[ChatCallbackHandler()])
 
@@ -49,7 +49,7 @@ def embed_file(file):
     file_content = file.read()
     file_path = f"./.cache/files/{file.name}"
     with open(file_path, "wb") as f:
-        f.write(file_content)
+        f.write(file_content)  # 선택한 파일의 내용을 .cache/files 디렉토리로 옮김
 
     cache_dir = LocalFileStore(f"./.cache/embeddings/{file.name}")
 
@@ -61,7 +61,7 @@ def embed_file(file):
 
     loader = JSONLoader(
         file_path=file_path,
-        jq_schema=".[:10] | .[].content",
+        jq_schema=".[:10] | .[].content",  # 
         text_content=True,
     )
 
