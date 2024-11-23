@@ -1,12 +1,14 @@
-from langchain.prompts import ChatPromptTemplate
 from langchain_community.document_loaders import JSONLoader
-from langchain.text_splitter import CharacterTextSplitter
-from langchain.embeddings import OpenAIEmbeddings, CacheBackedEmbeddings
-from langchain.vectorstores import FAISS
-from langchain.storage import LocalFileStore
+from langchain_community.embeddings import OpenAIEmbeddings
+from langchain_community.chat_models import ChatOpenAI
+from langchain_community.vectorstores import FAISS
 from langchain.schema.runnable import RunnableLambda, RunnablePassthrough
-from langchain.chat_models import ChatOpenAI
 from langchain.callbacks.base import BaseCallbackHandler
+from langchain.text_splitter import CharacterTextSplitter
+from langchain.embeddings import CacheBackedEmbeddings
+from langchain.prompts import ChatPromptTemplate
+from langchain.storage import LocalFileStore
+from langchain.schema import Document
 import streamlit as st
 import os
 
@@ -19,11 +21,11 @@ st.title("AI News")
 
 st.markdown(
     """
-    Welcome!
+    환영합니다!
     
-    Use this chatbot to ask questions to an AI about your files!
+    이 챗봇을 사용하여 파일에 대해 AI에게 질문하세요!
     
-    Upload your files on the sidebar.
+    사이드바에서 AI 뉴스를 업로드하세요.
     """
 )
 
@@ -44,13 +46,18 @@ class ChatCallbackHandler(BaseCallbackHandler):
 
 llm = ChatOpenAI(temperature=0.1, streaming=True, callbacks=[ChatCallbackHandler()])
 
+# 문서 요약 시 요약 내용이 화면에 출력되는 것을 막기 위한 llm
+llm_silent = ChatOpenAI(temperature=0.1, streaming=True)
+
 # LLM을 활용한 문서 요약 함수
 def summarize_documents(docs, llm):
     summarized_docs = []
     for doc in docs:
         # 요약 요청을 LLM으로 보내기
         summary = llm.predict(f"이 내용 요약해줘: {doc.page_content}")
-        summarized_docs.append(summary)
+        
+        # Document 객체에 담아 summarized_docs에 추가 
+        summarized_docs.append(Document(page_content=summary))
     return summarized_docs
 
 # 같은 file에 대해 embed_file()을 실행했었다면 cache에서 결과를 바로 반환하는 decorator
@@ -69,7 +76,7 @@ def embed_file(file, summarize=False):
 
     loader = JSONLoader(
         file_path=file_path,
-        jq_schema=".[:10] | .[].content",  # 10개의 기사만 가져오기
+        jq_schema=".[:5] | .[].content",  # 5개의 기사만 가져오기
         text_content=True,
     )
 
@@ -79,14 +86,13 @@ def embed_file(file, summarize=False):
     if summarize:
         # 요약한 문서의 임베딩 결과를 저장할 디렉토리 만들기
         cache_dir_path = f"./.cache/summarized_embeddings/{file.name}"
-        os.makedirs(cache_dir_path, exist_ok=True)  
+        os.makedirs(cache_dir_path, exist_ok=True) # 디렉토리가 없으면 만들기
         cache_dir = LocalFileStore(cache_dir_path)
         
         docs = splitter.split_documents(data)  # splitter에 맞게 문서 분할
         
         # 문서 요약
-        summarized_docs = summarize_documents(docs, llm)
-        docs = [{"page_content": summary} for summary in summarized_docs]
+        docs = summarize_documents(docs, llm_silent)
         
         embeddings = OpenAIEmbeddings()
 
@@ -99,7 +105,7 @@ def embed_file(file, summarize=False):
     else:
         # 문서의 임베딩 결과를 저장할 디렉토리 만들기
         cache_dir_path = f"./.cache/embeddings/{file.name}"
-        os.makedirs(cache_dir_path, exist_ok=True)
+        os.makedirs(cache_dir_path, exist_ok=True) # 디렉토리가 없으면 만들기
         cache_dir = LocalFileStore(cache_dir_path)
         
         docs = splitter.split_documents(data)  # splitter에 맞게 문서 분할
@@ -144,6 +150,7 @@ def paint_history():
 def format_docs(docs):
     return "\n\n".join(document.page_content for document in docs)
 
+# 문서에 있는 내용으로만 답변하라는 프롬프트 생성 
 prompt = ChatPromptTemplate.from_messages([
     (
         "system",
@@ -156,21 +163,47 @@ prompt = ChatPromptTemplate.from_messages([
     ("human", "{question}"),
 ])
 
-# 사이드바에서 json 파일 업로드
+# 사이드바에서 문서 요약 여부 선택 & json 파일 업로드
 with st.sidebar:
     summarize = st.radio(
         "Summarize content for embedding?",
         ["No", "Yes"]
     )
-    file = st.file_uploader("Upload a .json", type=["json"])
+    file = st.file_uploader("Upload a .json file", type=["json"])
 
+# summarize의 초기 상태를 No로 설정
+if "previous_radio_value" not in st.session_state:
+    st.session_state.previous_radio_value = "No"
+
+# 파일이 업로드 되었을 때 
 if file:
+    # 1. summarize == 'Yes'
+    #     - 업로드한 문서를 LLM을 통해 요약한 후 임베딩 
+    #     - summarize 값이 이전 상태와 다른 경우, 기존 대화 내역을 삭제 
+    #     - 문서를 요약해서 임베딩한 파일을 retriever로 불러와 사용
+    
+    # 2. summarize == 'No'
+    #     - 업로드한 문서를 그대로 임베딩 
+    #     - summarize 값이 이전 상태와 다른 경우, 기존 대화 내역을 삭제 
+    #     - 문서를 그대로 임베딩한 파일을 retriever로 불러와 사용
+        
+    # 3. 임베딩이 완료되어야 메시지 창 활성화 
+
     if summarize == "Yes":
+        if summarize != st.session_state.previous_radio_value:
+            if "messages" in st.session_state:
+                st.session_state["messages"] = []
+        st.session_state.previous_radio_value = summarize
         retriever = embed_file(file, summarize=True)
     else:
+        if summarize != st.session_state.previous_radio_value:
+            if "messages" in st.session_state:
+                st.session_state["messages"] = []
+        st.session_state.previous_radio_value = summarize
         retriever = embed_file(file, summarize=False)
 
-    send_message("I'm ready! Ask away!","ai", save=False)
+    # 임베딩 완료 신호 
+    send_message("준비됐습니다! 질문해주세요!","ai", save=False)
     paint_history()
     message = st.chat_input("Ask anything about your file...")
 
@@ -186,5 +219,6 @@ if file:
         with st.chat_message("ai"):
             chain.invoke(message)
 
+# 파일이 업로드 되지 않았을 때 
 else:
-    st.session_state["messages"] = []
+    st.session_state["messages"] = []  # 대화 내역 없음 
