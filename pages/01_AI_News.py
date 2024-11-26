@@ -70,8 +70,8 @@ def embed_file(file, summarize=False):
 
     splitter = CharacterTextSplitter.from_tiktoken_encoder(
         separator="\n",
-        chunk_size=1000,
-        chunk_overlap=100,
+        chunk_size=200,
+        chunk_overlap=20,
     )
 
     loader = JSONLoader(
