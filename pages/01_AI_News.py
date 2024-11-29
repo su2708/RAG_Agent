@@ -1,5 +1,5 @@
 from langchain_community.document_loaders import JSONLoader
-from langchain_community.embeddings import OpenAIEmbeddings
+from langchain_openai.embeddings import OpenAIEmbeddings
 from langchain_community.chat_models import ChatOpenAI
 from langchain_community.vectorstores import FAISS
 from langchain.schema.runnable import RunnableLambda, RunnablePassthrough
