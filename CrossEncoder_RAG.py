@@ -167,7 +167,7 @@ from sentence_transformers import CrossEncoder
 
 class AINewsRAG:
     def __init__(self, embedding_model, 
-                 cross_encoder_name: str = "BM-K/KoSimCSE-roberta-multitask"):
+                cross_encoder_name: str = "BM-K/KoSimCSE-roberta-multitask"):
         """
         AINewsRAG 클래스 초기화
         """
