@@ -9,8 +9,11 @@ from langchain_core.prompts import PromptTemplate
 from langchain.embeddings import OpenAIEmbeddings
 from langchain_core.tools import tool
 from langchain_core.runnables import RunnablePassthrough, RunnableSequence
-from Keyword_Hybrid_RAG import AINewsRAG
 from langchain.agents import Tool
+
+import sys
+sys.path.append('C:/Users/USER/anaconda3/envs/SpartaProjects/Personal_Project/RAG_Agent/RAG_Agent')
+from Keyword_Hybrid_RAG import AINewsRAG
 
 load_dotenv()
 
@@ -146,6 +149,9 @@ tools = [
     )
 ]
 
+# tool 이름 받기
+tool_names = [tool.func.name for tool in tools]
+
 class SearchResult(BaseModel):
     """
     사용자 질문: str
@@ -277,7 +283,6 @@ def main():
             print(f"검색 결과: {result}")
             
             # tool에 따른 동작 실행 
-            tool_names = [tool.func.name for tool in tools]  # tool 이름 받기 
             if result['tool'] in tool_names:
                 # YouTube 검색
                 if result['tool'] == 'search_video':
