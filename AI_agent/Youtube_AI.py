@@ -12,16 +12,15 @@ from langchain_core.runnables import RunnablePassthrough, RunnableSequence
 from langchain.agents import Tool
 from NewsRAG import AINewsRAG
 
+# 환경 변수 로드 
 load_dotenv()
 
 # 환경 변수에서 경로 가져오기
-vector_store_path = os.getenv("VECTOR_STORE_NAME", "ai_news_vectorstore")
-news_dir = os.getenv("NEWS_FILE_PATH", "./ai_news")
-processed_doc_path = os.getenv("PROCESSED_DOCS_PATH", "processed_docs/processed_docs.pkl")
+vector_store_path = "../ai_news_vectorstore"
 
 # 임베딩 모델 초기화 
 embedding_model = OpenAIEmbeddings(
-    model=os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
+    model=os.getenv("OPENAI_EMBEDDING_MODEL")
 )
 
 # 환경 변수에서 OpenAI API 키를 불러오기
@@ -39,7 +38,7 @@ rag = AINewsRAG(embedding_model)
 
 try:
     # 기존 벡터 스토어 로드 시도
-    rag.load_vector_store(vector_store_path, processed_doc_path)
+    rag.load_vector_store(vector_store_path)
     print("✅ 기존 벡터 스토어를 로드했습니다.")
     
 except Exception as e:
@@ -49,9 +48,8 @@ except Exception as e:
 @tool
 def search_news(query: str, k: int = 5):
     """
-    하이브리드 검색 방식으로 AI 뉴스를 검색합니다.
+    AI 뉴스를 검색합니다.
     """
-    search_mode = "hybrid" # 검색 방식 변경은 'mode [semantic/keyword/hybrid]'를 입력하세요.
     while True:
         query = query.strip()
 
@@ -61,40 +59,20 @@ def search_news(query: str, k: int = 5):
         if query.lower() in ['q', 'quit']:
             print("\n👋 검색을 종료합니다.")
             break
-            
-        if query.lower().startswith('mode '):
-            mode = query.split()[1].lower()
-            if mode in ['semantic', 'keyword', 'hybrid']:
-                search_mode = mode
-                print(f"\n✅ 검색 모드를 '{mode}'로 변경했습니다.")
-            else:
-                print("\n❌ 잘못된 검색 모드입니다. semantic/keyword/hybrid 중 선택하세요.")
-            continue
 
         try:
-            print(f"\n'{query}' 검색을 시작합니다... (모드: {search_mode})")
+            print(f"\n'{query}' 검색을 시작합니다...")
             
-            if search_mode == "hybrid":
-                results = rag.hybrid_search(query, k=k, semantic_weight=0.5)
-            elif search_mode == "semantic":
-                results = rag.vector_store.similarity_search_with_score(query, k=k)
-            else:  # keyword
-                results = rag.keyword_search(query, k=k)
+            results = rag.search(query, k=k)
             
             print(f"\n✨ 검색 완료! {len(results)}개의 결과를 찾았습니다.\n")
             
             # 결과 출력
-            for i, (doc, score) in enumerate(results, 1):
+            for i, doc in enumerate(results):
                 print(f"\n{'='*80}")
                 print(f"검색 결과 {i}/{len(results)}")
                 print(f"제목: {doc.metadata['title']}")
                 print(f"날짜: {doc.metadata['date']}")
-                if search_mode == "hybrid":
-                    print(f"통합 점수: {score:.4f}")
-                elif search_mode == "semantic":
-                    print(f"유사도 점수: {1 - (score/2):.4f}")
-                else:
-                    print(f"BM25 점수: {score:.4f}")
                 print(f"URL: {doc.metadata['url']}")
                 print(f"{'-'*40}")
                 print(f"내용:\n{doc.page_content[:300]}...")
@@ -133,6 +111,7 @@ def search_video(query, max_results=5):
         ]
         return results
 
+# tools 설정 
 tools = [
     Tool(
         name="Search youtube tool",
@@ -142,13 +121,14 @@ tools = [
     Tool(
         name="Search news tool",
         func=search_news,
-        description="하이브리드 검색 방식으로 AI 뉴스를 검색합니다."
+        description="AI 뉴스를 검색합니다."
     )
 ]
 
 # tool 이름 받기
 tool_names = [tool.func.name for tool in tools]
 
+# 검색 결과 자료형 설정 
 class SearchResult(BaseModel):
     """
     사용자 질문: str
@@ -161,6 +141,7 @@ class SearchResult(BaseModel):
     search_keywords: str
     tool: str
 
+# 검색 Agent 설정 
 class AIAgent:
     def __init__(self, openai_api_key, youtube_api_key, llm_model="gpt-4o"):
         self.openai_api_key = openai_api_key
@@ -262,6 +243,8 @@ class AIAgent:
             if result['video_id']:
                 video_url = f"https://www.youtube.com/watch?v={result['video_id']}"
                 print(video_url)
+
+# Streamlit Part 시작
 
 def main():
     try:
