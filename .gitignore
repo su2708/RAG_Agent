@@ -4,3 +4,4 @@ ai_news
 ai_news_vectorstore
 processed_docs
 __pycache__
+summarized_ai_news_vectorstore
