@@ -10,9 +10,6 @@ from langchain.embeddings import OpenAIEmbeddings
 from langchain_core.tools import tool
 from langchain_core.runnables import RunnablePassthrough, RunnableSequence
 from langchain.agents import Tool
-
-import sys
-sys.path.append('C:/Users/USER/anaconda3/envs/SpartaProjects/Personal_Project/RAG_Agent/RAG_Agent')
 from Keyword_Hybrid_RAG import AINewsRAG
 
 load_dotenv()
