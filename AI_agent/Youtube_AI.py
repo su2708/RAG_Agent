@@ -10,7 +10,7 @@ from langchain.embeddings import OpenAIEmbeddings
 from langchain_core.tools import tool
 from langchain_core.runnables import RunnablePassthrough, RunnableSequence
 from langchain.agents import Tool
-from Keyword_Hybrid_RAG import AINewsRAG
+from NewsRAG import AINewsRAG
 
 load_dotenv()
 
