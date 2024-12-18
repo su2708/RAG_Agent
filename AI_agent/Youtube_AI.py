@@ -11,8 +11,8 @@ from langchain_core.tools import tool
 from langchain_core.runnables import RunnablePassthrough, RunnableSequence
 from langchain_openai import OpenAIEmbeddings
 from langchain.agents import Tool
-from NewsRAG import AINewsRAG, StreamHandler
-from display import display_news, display_videos
+from .NewsRAG import AINewsRAG, StreamHandler
+from .display import display_news, display_videos
 
 # 환경 변수 로드 
 load_dotenv()
