@@ -48,7 +48,7 @@ except Exception as e:
 
 # tool 설정: 뉴스 검색 
 @tool
-def search_news(query: str, k: int = 5):
+def search_news(query: str, k: int = 3):
     """
     AI 뉴스를 검색합니다.
     """
@@ -173,10 +173,10 @@ def display_videos(results):
             st.markdown(
                 f"""
                 <div>
-                    <p style="color: lightgray;">
+                    <p style="color: #cccccc;">
                         createdAt: {days_since_upload} days ago
                     </p>
-                    <p style="color: lightgray;">
+                    <p style="color: #cccccc;">
                         Channel: {result['channelTitle']}
                     </p>
                 </div>
@@ -185,7 +185,31 @@ def display_videos(results):
             )
             
             # 영상 설명 
-            st.markdown(f"{result['description']}")
+            st.markdown(f"{result['description'][:100]}...")
+
+# News 검색 결과를 보여주는 함수 
+def display_news(results):
+    columns = st.columns(len(results))
+    for i, col in enumerate(columns):
+        with col:
+            st.markdown(f"##### {results[i]["metadata"]["title"]}")
+            st.markdown(
+                f"""
+                <div>
+                    <p style="color: #cccccc;">
+                        날짜: {results[i]["metadata"]["date"]}
+                    </p>
+                    <p style="color: #cccccc;">
+                        <a href="{results[i]["metadata"]["url"]}">
+                            URL: {results[i]["metadata"]["url"]}
+                        </a>
+                    </p>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+            st.markdown("---")
+            st.markdown(f"{results[i]["content"][:200]}...")
 
 # 검색 결과 자료형 설정 
 class SearchResult(BaseModel):
@@ -300,56 +324,30 @@ class AIAgent:
         # Youtube 검색 결과 보여주기 
         if tool == 'search_video':
             display_videos(results)
-            # for result in results:
-            #     # 구획 나누기 
-            #     col1, col2 = st.columns(2)
-                
-            #     # 날짜 계산 
-            #     upload_date = datetime.strptime(
-            #         result['publishedAt'], '%Y-%m-%dT%H:%M:%SZ'
-            #     )
-            #     days_since_upload = (datetime.now() - upload_date).days
-                
-            #     st.markdown('---')
-                
-            #     # 왼쪽 구획 
-            #     with col1:
-            #         video_url = f"https://www.youtube.com/watch?v={result['video_id']}"
-            #         st.video(video_url)
-                
-            #     # 오른쪽 구획 
-            #     with col2:
-            #         # 제목 
-            #         st.markdown(f"##### {result['title']}")
-                    
-            #         # 업로드 날짜와 채널 이름 
-            #         st.markdown(
-            #             f"""
-            #             <div>
-            #                 <p style="color: lightgray;">
-            #                     createdAt: {days_since_upload} days ago
-            #                 </p>
-            #                 <p style="color: lightgray;">
-            #                     Channel: {result['channelTitle']}
-            #                 </p>
-            #             </div>
-            #             """,
-            #             unsafe_allow_html=True
-            #         )
-                    
-            #         # 영상 설명 
-            #         st.markdown(f"{result['description']}")
         
         # News 검색 결과 보여주기 
         else:
-            pass
+            display_news(results)
 
 # 이전 대화 기록을 출력해주는 함수
 def print_messages():
     if "messages" in st.session_state and len(st.session_state["messages"]) > 0:
         for chat_message in st.session_state["messages"]:
-            # type에 따라 답변 형태 변경 
-            st.chat_message(chat_message.role).write(chat_message.content)
+            # message type에 따라 다르게 출력
+            
+            # chat_message.content가 문자열인 경우 
+            if isinstance(chat_message.content, str):
+                st.chat_message(chat_message.role).write(chat_message.content)
+            
+            # chat_message.content가 뉴스나 Youtube 검색 결과인 경우 
+            else:
+                # chat_message.content에 metadata가 있다면 해당 대화는 뉴스를 출력한 것 
+                if "metadata" in chat_message.content[0]:
+                    display_news(chat_message.content)
+                
+                # Youtube 검색 결과 출력 
+                else:
+                    display_videos(chat_message.content)
 
 # Streamlit Part 시작
 
@@ -381,7 +379,6 @@ try:
         print("="*30)
         print("LLM을 통해 입력 쿼리를 분석 중입니다...")
         result = agent.analyze_query(user_input)
-        print(f"검색 결과: {result}")
         
         with st.chat_message("assistant"):
             stream_handler = StreamHandler(st.empty())
@@ -421,7 +418,10 @@ try:
                     # 검색 결과 표시
                     if search_results:                        
                         st.write("News 검색 결과입니다.")
-                        st.write(search_results)
+                        agent.display_results(
+                            tool='search_news',
+                            results=search_results
+                        )
                         
                         st.session_state["messages"].append(
                             ChatMessage(role="assistant", content=search_results)
@@ -435,7 +435,6 @@ try:
             
             else:
                 response = "AI와 관련된 질문만 받을 수 있습니다."
-                print(f"{response}")
                 st.write(f"{response}")
                 st.session_state["messages"].append(
                     ChatMessage(role="assistant", content=response)
