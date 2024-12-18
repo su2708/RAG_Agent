@@ -4,15 +4,15 @@ import streamlit as st
 from langchain_openai import ChatOpenAI
 from dotenv import load_dotenv
 from pydantic import BaseModel
-from datetime import datetime
 from langchain_core.messages import ChatMessage
 from langchain_core.output_parsers import PydanticOutputParser
-from langchain_core.prompts import PromptTemplate, ChatPromptTemplate
-from langchain_openai import OpenAIEmbeddings
+from langchain_core.prompts import PromptTemplate
 from langchain_core.tools import tool
 from langchain_core.runnables import RunnablePassthrough, RunnableSequence
+from langchain_openai import OpenAIEmbeddings
 from langchain.agents import Tool
 from NewsRAG import AINewsRAG, StreamHandler
+from display import display_news, display_videos
 
 # 환경 변수 로드 
 load_dotenv()
@@ -114,7 +114,6 @@ def search_video(query, max_results=5):
             order="viewCount",
         )
         response = request.execute()
-        print(response.get("items", []))
 
         results = [
             {
@@ -144,72 +143,6 @@ tools = [
 
 # tool 이름 받기
 tool_names = [tool.func.name for tool in tools]
-
-# Youtube 검색 결과를 보여주는 함수 
-def display_videos(results):
-    for result in results:
-        # 구획 나누기 
-        col1, col2 = st.columns(2)
-        
-        # 날짜 계산 
-        upload_date = datetime.strptime(
-            result['publishedAt'], '%Y-%m-%dT%H:%M:%SZ'
-        )
-        days_since_upload = (datetime.now() - upload_date).days
-        
-        st.markdown('---')
-        
-        # 왼쪽 구획 
-        with col1:
-            video_url = f"https://www.youtube.com/watch?v={result['video_id']}"
-            st.video(video_url)
-        
-        # 오른쪽 구획 
-        with col2:
-            # 제목 
-            st.markdown(f"##### {result['title']}")
-            
-            # 업로드 날짜와 채널 이름 
-            st.markdown(
-                f"""
-                <div>
-                    <p style="color: #cccccc;">
-                        createdAt: {days_since_upload} days ago
-                    </p>
-                    <p style="color: #cccccc;">
-                        Channel: {result['channelTitle']}
-                    </p>
-                </div>
-                """,
-                unsafe_allow_html=True
-            )
-            
-            # 영상 설명 
-            st.markdown(f"{result['description'][:100]}...")
-
-# News 검색 결과를 보여주는 함수 
-def display_news(results):
-    columns = st.columns(len(results))
-    for i, col in enumerate(columns):
-        with col:
-            st.markdown(f"##### {results[i]["metadata"]["title"]}")
-            st.markdown(
-                f"""
-                <div>
-                    <p style="color: #cccccc;">
-                        날짜: {results[i]["metadata"]["date"]}
-                    </p>
-                    <p style="color: #cccccc;">
-                        <a href="{results[i]["metadata"]["url"]}">
-                            URL: {results[i]["metadata"]["url"]}
-                        </a>
-                    </p>
-                </div>
-                """,
-                unsafe_allow_html=True
-            )
-            st.markdown("---")
-            st.markdown(f"{results[i]["content"][:200]}...")
 
 # 검색 결과 자료형 설정 
 class SearchResult(BaseModel):
@@ -354,10 +287,27 @@ def print_messages():
 # Streamlit 페이지 설정
 st.set_page_config(
     page_title="Youtube & News AI agent",
-    page_icon="▶️",
+    page_icon="🤖",
 )
 
-st.title("Youtube & News AI agent")
+st.title("🤖Youtube & News AI agent🤖")
+
+st.markdown(
+    """
+    ### AI 관련 정보를 제공하는 도우미 서비스입니다.
+    
+    - AI와 관련된 주제의 질문을 해주세요.
+    - 답변은 Youtube 영상 추천 혹은 관련 뉴스 검색으로 제공됩니다.
+
+    - AI 관련 주제 판단 기준:
+        - AI 기술 (머신러닝, 딥러닝, 자연어처리 등)
+        - AI 도구 및 서비스 (ChatGPT, DALL-E, Stable Diffusion 등)
+        - AI 회사 및 연구소 소식
+        - AI 정책 및 규제
+        - AI 교육 및 학습
+        - AI 윤리 및 영향
+    """
+)
 
 # Streamlit 세션 상태 초기화
 if "messages" not in st.session_state:
@@ -380,6 +330,7 @@ try:
         print("LLM을 통해 입력 쿼리를 분석 중입니다...")
         result = agent.analyze_query(user_input)
         
+        st.empty()
         with st.chat_message("assistant"):
             stream_handler = StreamHandler(st.empty())
         
@@ -390,6 +341,7 @@ try:
                     print("="*30)
                     print("YouTube에서 검색 중입니다...")
                     search_results = search_video(result['search_keywords'])
+                    print("검색을 완료했습니다.")
 
                     # 검색 결과 표시
                     if search_results:                       
