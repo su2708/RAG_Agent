@@ -4,13 +4,15 @@ import streamlit as st
 from langchain_openai import ChatOpenAI
 from dotenv import load_dotenv
 from pydantic import BaseModel
+from datetime import datetime
+from langchain_core.messages import ChatMessage
 from langchain_core.output_parsers import PydanticOutputParser
-from langchain_core.prompts import PromptTemplate
-from langchain.embeddings import OpenAIEmbeddings
+from langchain_core.prompts import PromptTemplate, ChatPromptTemplate
+from langchain_openai import OpenAIEmbeddings
 from langchain_core.tools import tool
 from langchain_core.runnables import RunnablePassthrough, RunnableSequence
 from langchain.agents import Tool
-from NewsRAG import AINewsRAG
+from NewsRAG import AINewsRAG, StreamHandler
 
 # 환경 변수 로드 
 load_dotenv()
@@ -50,6 +52,8 @@ def search_news(query: str, k: int = 5):
     """
     AI 뉴스를 검색합니다.
     """
+    search_results = []
+    
     while True:
         query = query.strip()
 
@@ -70,18 +74,27 @@ def search_news(query: str, k: int = 5):
             # 결과 출력
             for i, doc in enumerate(results):
                 print(f"\n{'='*80}")
-                print(f"검색 결과 {i}/{len(results)}")
+                print(f"검색 결과 {i+1}/{len(results)}")
                 print(f"제목: {doc.metadata['title']}")
                 print(f"날짜: {doc.metadata['date']}")
                 print(f"URL: {doc.metadata['url']}")
                 print(f"{'-'*40}")
                 print(f"내용:\n{doc.page_content[:300]}...")
+                
+                search_results.append(
+                    {
+                        "metadata": doc.metadata,
+                        "content": doc.page_content,
+                    }
+                )
             
             # 종료
             break
         
         except Exception as e:
             print(f"\n❌ 검색 중 오류가 발생했습니다: {str(e)}")
+    
+    return search_results
 
 # tool 설정: 유튜브 검색 
 @tool
@@ -97,15 +110,19 @@ def search_video(query, max_results=5):
             part="snippet",
             q=query,
             type="video",
-            maxResults=max_results
+            maxResults=max_results,
+            order="viewCount",
         )
         response = request.execute()
+        print(response.get("items", []))
 
         results = [
             {
                 "title": item["snippet"]["title"],
                 "description": item["snippet"]["description"],
-                "video_id": item["id"]["videoId"]
+                "publishedAt": item["snippet"]["publishedAt"],
+                "channelTitle": item["snippet"]["channelTitle"],
+                "video_id": item["id"]["videoId"],
             }
             for item in response.get("items", [])
         ]
@@ -127,6 +144,48 @@ tools = [
 
 # tool 이름 받기
 tool_names = [tool.func.name for tool in tools]
+
+# Youtube 검색 결과를 보여주는 함수 
+def display_videos(results):
+    for result in results:
+        # 구획 나누기 
+        col1, col2 = st.columns(2)
+        
+        # 날짜 계산 
+        upload_date = datetime.strptime(
+            result['publishedAt'], '%Y-%m-%dT%H:%M:%SZ'
+        )
+        days_since_upload = (datetime.now() - upload_date).days
+        
+        st.markdown('---')
+        
+        # 왼쪽 구획 
+        with col1:
+            video_url = f"https://www.youtube.com/watch?v={result['video_id']}"
+            st.video(video_url)
+        
+        # 오른쪽 구획 
+        with col2:
+            # 제목 
+            st.markdown(f"##### {result['title']}")
+            
+            # 업로드 날짜와 채널 이름 
+            st.markdown(
+                f"""
+                <div>
+                    <p style="color: lightgray;">
+                        createdAt: {days_since_upload} days ago
+                    </p>
+                    <p style="color: lightgray;">
+                        Channel: {result['channelTitle']}
+                    </p>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+            
+            # 영상 설명 
+            st.markdown(f"{result['description']}")
 
 # 검색 결과 자료형 설정 
 class SearchResult(BaseModel):
@@ -234,34 +293,99 @@ class AIAgent:
         
         return response.model_dump()  # json 형식으로 변형형
 
-    def format_results_for_display(self, results):
+    def display_results(self, tool, results):
         """
-        검색 결과를 스트림릿에서 보여줄 수 있도록 포맷팅.
+        검색 결과를 스트림릿으로 보여주기 
         """
-        for result in results:
-            print(f"### {result['title']}")
-            if result['video_id']:
-                video_url = f"https://www.youtube.com/watch?v={result['video_id']}"
-                print(video_url)
+        # Youtube 검색 결과 보여주기 
+        if tool == 'search_video':
+            display_videos(results)
+            # for result in results:
+            #     # 구획 나누기 
+            #     col1, col2 = st.columns(2)
+                
+            #     # 날짜 계산 
+            #     upload_date = datetime.strptime(
+            #         result['publishedAt'], '%Y-%m-%dT%H:%M:%SZ'
+            #     )
+            #     days_since_upload = (datetime.now() - upload_date).days
+                
+            #     st.markdown('---')
+                
+            #     # 왼쪽 구획 
+            #     with col1:
+            #         video_url = f"https://www.youtube.com/watch?v={result['video_id']}"
+            #         st.video(video_url)
+                
+            #     # 오른쪽 구획 
+            #     with col2:
+            #         # 제목 
+            #         st.markdown(f"##### {result['title']}")
+                    
+            #         # 업로드 날짜와 채널 이름 
+            #         st.markdown(
+            #             f"""
+            #             <div>
+            #                 <p style="color: lightgray;">
+            #                     createdAt: {days_since_upload} days ago
+            #                 </p>
+            #                 <p style="color: lightgray;">
+            #                     Channel: {result['channelTitle']}
+            #                 </p>
+            #             </div>
+            #             """,
+            #             unsafe_allow_html=True
+            #         )
+                    
+            #         # 영상 설명 
+            #         st.markdown(f"{result['description']}")
+        
+        # News 검색 결과 보여주기 
+        else:
+            pass
+
+# 이전 대화 기록을 출력해주는 함수
+def print_messages():
+    if "messages" in st.session_state and len(st.session_state["messages"]) > 0:
+        for chat_message in st.session_state["messages"]:
+            # type에 따라 답변 형태 변경 
+            st.chat_message(chat_message.role).write(chat_message.content)
 
 # Streamlit Part 시작
 
-def main():
-    try:
-        # 유저 입력 받기
-        print("AI Search Agent")
-        user_query = input("검색할 내용을 입력하세요 (예: AI 뉴스 관련 영상을 알려줘):")
+# Streamlit 페이지 설정
+st.set_page_config(
+    page_title="Youtube & News AI agent",
+    page_icon="▶️",
+)
 
-        if user_query:
-            # Agent 초기화
-            agent = AIAgent(openai_api_key, youtube_api_key)
-            
-            # 쿼리 분석
-            print("="*30)
-            print("LLM을 통해 입력 쿼리를 분석 중입니다...")
-            result = agent.analyze_query(user_query)
-            print(f"검색 결과: {result}")
-            
+st.title("Youtube & News AI agent")
+
+# Streamlit 세션 상태 초기화
+if "messages" not in st.session_state:
+    st.session_state["messages"] = []
+
+# Agent 초기화
+agent = AIAgent(openai_api_key, youtube_api_key)
+
+try: 
+    # 대화 기록 출력
+    print_messages()
+    
+    # 사용자의 질문 받기 
+    if user_input := st.chat_input("궁금한 것을 입력하세요."):
+        st.chat_message("user").write(user_input)
+        st.session_state["messages"].append(ChatMessage(role="user", content=user_input))
+        
+        # 쿼리 분석
+        print("="*30)
+        print("LLM을 통해 입력 쿼리를 분석 중입니다...")
+        result = agent.analyze_query(user_input)
+        print(f"검색 결과: {result}")
+        
+        with st.chat_message("assistant"):
+            stream_handler = StreamHandler(st.empty())
+        
             # tool에 따른 동작 실행 
             if result['tool'] in tool_names:
                 # YouTube 검색
@@ -271,11 +395,22 @@ def main():
                     search_results = search_video(result['search_keywords'])
 
                     # 검색 결과 표시
-                    if search_results:
-                        print("검색 결과:")
-                        agent.format_results_for_display(search_results)
+                    if search_results:                       
+                        st.write("Youtube 검색 결과입니다.")
+                        agent.display_results(
+                            tool='search_video',
+                            results=search_results
+                        )
+                        
+                        st.session_state["messages"].append(
+                            ChatMessage(role="assistant", content=search_results)
+                        )
                     else:
-                        print("검색 결과가 없습니다.")
+                        response = "검색 결과가 없습니다."
+                        st.write(f"{response}")
+                        st.session_state["messages"].append(
+                            ChatMessage(role="assistant", content=response)
+                        )
             
                 # 뉴스 검색
                 else:
@@ -284,20 +419,32 @@ def main():
                     search_results = search_news(result['search_keywords'])
 
                     # 검색 결과 표시
-                    if search_results:
-                        print("검색 결과:")
-                        agent.format_results_for_display(search_results)
+                    if search_results:                        
+                        st.write("News 검색 결과입니다.")
+                        st.write(search_results)
+                        
+                        st.session_state["messages"].append(
+                            ChatMessage(role="assistant", content=search_results)
+                        )
                     else:
-                        print("검색 결과가 없습니다.")
+                        response = "검색 결과가 없습니다."
+                        st.write(f"{response}")
+                        st.session_state["messages"].append(
+                            ChatMessage(role="assistant", content=response)
+                        )
             
             else:
-                print("AI와 관련된 질문만 받을 수 있습니다.")
-            
-    except KeyboardInterrupt:
-        print("Shutting down process...")
-    
-    except Exception as e:
-        print(f"Error occurred: {e}")
+                response = "AI와 관련된 질문만 받을 수 있습니다."
+                print(f"{response}")
+                st.write(f"{response}")
+                st.session_state["messages"].append(
+                    ChatMessage(role="assistant", content=response)
+                )
 
-if __name__ == "__main__":
-    main()
+except KeyboardInterrupt:
+    print("Shutting down process...")
+    st.write("Shutting down process...")
+
+except Exception as e:
+    print(f"Error occurred: {e}")
+    st.write(f"Error occurred: {e}")
