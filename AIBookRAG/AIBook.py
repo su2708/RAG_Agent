@@ -271,7 +271,7 @@ try:
                 # 검색 결과 표시
                 if search_results:                       
                     st.write("도서 검색 결과입니다.")
-                    st.write(search_results)
+                    display_results(search_results)
                     
                     st.session_state["messages"].append(
                         ChatMessage(role="assistant", content=search_results)
